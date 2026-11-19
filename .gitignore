@@ -1,0 +1,11 @@
+target/
+data/
+credentials.json
+*.iml
+.idea/
+
+# OS / editor
+.DS_Store
+.vscode/
+*.log
+.env

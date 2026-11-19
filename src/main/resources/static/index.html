@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Banking App</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏦</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ================= Sidebar ================= -->
+  <aside class="sidebar" id="sidebar">
+    <div class="logo">
+      <span class="logo-mark">B</span>
+      <span class="logo-text">Banking App</span>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-group">Customer</div>
+      <a href="#/dashboard" data-route="dashboard" data-auth>
+        <svg viewBox="0 0 24 24"><path d="M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>Dashboard</a>
+      <a href="#/send" data-route="send" data-auth>
+        <svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>Send Money</a>
+      <a href="#/beneficiaries" data-route="beneficiaries" data-auth>
+        <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6"/></svg>Beneficiaries</a>
+      <a href="#/assistant" data-route="assistant" data-auth>
+        <svg viewBox="0 0 24 24"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>AI Assistant</a>
+      <a href="#/login" data-route="login" data-guest>
+        <svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>Login</a>
+      <a href="#/register" data-route="register" data-guest>
+        <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM20 8v6M23 11h-6"/></svg>Register</a>
+
+      <a href="#/help" data-route="help">
+        <svg viewBox="0 0 24 24"><path d="M12 22a10 10 0 100-20 10 10 0 000 20zM9.1 9a3 3 0 015.8 1c0 2-3 3-3 3M12 17h.01"/></svg>Help</a>
+
+      <div class="nav-group">Bank Operations</div>
+      <a href="#/bank-transfer" data-route="bank-transfer">
+        <svg viewBox="0 0 24 24"><path d="M7 16V4M7 4L3 8M7 4l4 4M17 8v12M17 20l4-4M17 20l-4-4"/></svg>Bank Transfer</a>
+      <a href="#/accounts" data-route="accounts">
+        <svg viewBox="0 0 24 24"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>All Accounts</a>
+      <a href="#/ops-assistant" data-route="ops-assistant">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2zM8 10h.01M12 10h.01M16 10h.01"/></svg>Ops Assistant</a>
+      <a href="#/fraud" data-route="fraud">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01"/></svg>Fraud Alerts <span class="nav-badge" id="fraudBadge" hidden></span></a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="user-chip" data-auth>
+        <span class="avatar" id="userAvatar"></span>
+        <div class="user-meta"><div id="userName"></div><div class="muted small" id="userId"></div></div>
+        <button class="icon-btn" id="logoutBtn" title="Log out" aria-label="Log out">
+          <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        </button>
+      </div>
+      <button class="theme-toggle" id="themeToggle" type="button">🌓 Toggle theme</button>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim"></div>
+
+  <!-- ================= Main ================= -->
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu">
+        <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <h1 id="pageTitle">Banking App</h1>
+    </header>
+
+    <main class="content">
+
+      <!-- ---------- Login ---------- -->
+      <section class="view" data-view="login">
+        <div class="auth-wrap">
+          <div class="auth-hero">
+            <h2>Welcome back</h2>
+            <p>Log in to see your balances, manage beneficiaries and send money.</p>
+            <ul class="ticks">
+              <li>Transfers go through instantly</li>
+              <li>Up to 1,000,000 per transfer</li>
+              <li>Every transaction gets a reference number</li>
+            </ul>
+          </div>
+          <form class="card auth-card" id="loginForm" novalidate>
+            <h3>Customer login</h3>
+            <div class="field"><label for="loginEmail">E-mail</label>
+              <input id="loginEmail" name="email" type="email" autocomplete="username" required></div>
+            <div class="field"><label for="loginPassword">Password</label>
+              <div class="pw"><input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+                <button type="button" class="pw-toggle" aria-label="Show password">Show</button></div></div>
+            <div class="form-error" id="loginError"></div>
+            <button class="btn primary block" type="submit">Log in</button>
+            <p class="muted small center">New here? <a href="#/register">Create an account</a></p>
+            <details class="demo">
+              <summary>Demo customers</summary>
+              <p class="small">Any sample customer works, with password <code>Password@123</code>:</p>
+              <div class="demo-list" id="demoList"></div>
+            </details>
+          </form>
+        </div>
+      </section>
+
+      <!-- ---------- Register ---------- -->
+      <section class="view" data-view="register">
+        <div class="auth-wrap">
+          <div class="auth-hero">
+            <h2>Open an account</h2>
+            <p>Register once and we open a new account for you right away. You'll see your account number as soon as you finish.</p>
+            <ul class="ticks">
+              <li>Savings or current account</li>
+              <li>Optional opening deposit</li>
+              <li>Send money to anyone who banks with us</li>
+            </ul>
+          </div>
+          <form class="card auth-card" id="registerForm" novalidate>
+            <h3>Customer registration</h3>
+            <div class="field"><label for="regName">Full name</label>
+              <input id="regName" name="fullName" maxlength="80" autocomplete="name" required></div>
+            <div class="row2">
+              <div class="field"><label for="regEmail">E-mail</label>
+                <input id="regEmail" name="email" type="email" autocomplete="email" required></div>
+              <div class="field"><label for="regPhone">Phone <span class="opt">optional</span></label>
+                <input id="regPhone" name="phone" type="tel" autocomplete="tel"></div>
+            </div>
+            <div class="field"><label for="regPassword">Password</label>
+              <div class="pw"><input id="regPassword" name="password" type="password" minlength="8" autocomplete="new-password" required>
+                <button type="button" class="pw-toggle" aria-label="Show password">Show</button></div>
+              <div class="strength"><span id="pwBar"></span></div>
+              <div class="hint" id="pwHint">At least 8 characters</div></div>
+            <div class="field"><label for="regConfirm">Confirm password</label>
+              <input id="regConfirm" name="confirm" type="password" autocomplete="new-password" required></div>
+            <div class="field"><label>Account type</label>
+              <div class="seg" role="radiogroup">
+                <label><input type="radio" name="accountType" value="SAVINGS" checked><span>Savings</span></label>
+                <label><input type="radio" name="accountType" value="CURRENT"><span>Current</span></label>
+              </div></div>
+            <div class="field"><label for="regDeposit">Opening deposit <span class="opt">optional</span></label>
+              <input id="regDeposit" name="openingDeposit" type="number" min="0" step="0.01" placeholder="0.00"></div>
+            <div class="form-error" id="regError"></div>
+            <button class="btn primary block" type="submit">Create account</button>
+            <p class="muted small center">Already a customer? <a href="#/login">Log in</a></p>
+          </form>
+        </div>
+      </section>
+
+      <!-- ---------- Dashboard ---------- -->
+      <section class="view" data-view="dashboard">
+        <div class="hero-card">
+          <div>
+            <div class="hero-label" id="greeting">Hello</div>
+            <div class="hero-amount" id="totalBalance">—</div>
+            <div class="hero-sub">Total balance across your accounts</div>
+          </div>
+          <div class="hero-actions">
+            <a class="btn light" href="#/send">Send money</a>
+            <a class="btn ghost-light" href="#/beneficiaries">Add beneficiary</a>
+          </div>
+        </div>
+
+        <h2 class="section-title">My accounts</h2>
+        <div class="acct-grid" id="myAccounts"></div>
+
+        <div class="section-head">
+          <h2 class="section-title">Recent activity</h2>
+          <div class="stats-inline" id="flowStats"></div>
+        </div>
+        <div class="card flush"><ul class="txn-list" id="myTxns"></ul></div>
+      </section>
+
+      <!-- ---------- Beneficiaries ---------- -->
+      <section class="view" data-view="beneficiaries">
+        <div class="split">
+          <form class="card" id="beneficiaryForm" novalidate>
+            <h3>Add a beneficiary</h3>
+            <p class="muted small">They must hold an account with this bank.</p>
+            <div class="field"><label for="benAcc">Account number</label>
+              <input id="benAcc" name="accountNumber" inputmode="numeric" maxlength="10" placeholder="10-digit account number" required></div>
+            <div class="lookup" id="benLookup"></div>
+            <div class="field"><label for="benNick">Nickname <span class="opt">optional</span></label>
+              <input id="benNick" name="nickname" maxlength="40" placeholder="e.g. Mom, Landlord"></div>
+            <div class="form-error" id="benError"></div>
+            <button class="btn primary block" type="submit">Add beneficiary</button>
+          </form>
+
+          <div>
+            <div class="section-head">
+              <h2 class="section-title">My beneficiaries</h2>
+              <span class="badge" id="benCount">0</span>
+            </div>
+            <div class="ben-grid" id="benList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Send money ---------- -->
+      <section class="view" data-view="send">
+        <form class="card narrow" id="sendForm" novalidate>
+          <h3>Send money to a beneficiary</h3>
+          <div class="field"><label for="sendFrom">From my account</label>
+            <select id="sendFrom" name="fromAccount" required></select>
+            <div class="hint" id="sendAvail"></div></div>
+
+          <div class="field"><label>To</label>
+            <div class="ben-picker" id="benPicker"></div>
+            <input type="hidden" name="beneficiaryId" id="sendTo"></div>
+
+          <div class="field"><label for="sendAmount">Amount</label>
+            <div class="amount-input"><span class="cur" id="curSym"></span>
+              <input id="sendAmount" name="amount" type="number" min="0.01" step="0.01" placeholder="0.00" required></div>
+            <div class="chips" data-for="sendAmount"></div></div>
+
+          <div class="field"><label for="sendNote">Note <span class="opt">optional</span></label>
+            <input id="sendNote" name="note" maxlength="100" placeholder="What's it for?"></div>
+          <div class="form-error" id="sendError"></div>
+          <button class="btn primary block" type="submit">Review transfer</button>
+        </form>
+      </section>
+
+      <!-- ---------- Bank transfer (any -> any) ---------- -->
+      <section class="view" data-view="bank-transfer">
+        <div class="notice">Bank operations: move money between <b>any</b> two accounts in the bank.</div>
+        <form class="card" id="bankForm" novalidate>
+          <div class="xfer">
+            <div class="xfer-side">
+              <label for="bankFrom">Source account</label>
+              <select id="bankFrom" name="fromAccount" required></select>
+              <div class="acct-preview" id="bankFromPrev"></div>
+            </div>
+            <button type="button" class="swap" id="swapBtn" title="Swap source and target" aria-label="Swap source and target">
+              <svg viewBox="0 0 24 24"><path d="M7 16V4M7 4L3 8M7 4l4 4M17 8v12M17 20l4-4M17 20l-4-4"/></svg>
+            </button>
+            <div class="xfer-side">
+              <label for="bankTo">Target account</label>
+              <select id="bankTo" name="toAccount" required></select>
+              <div class="acct-preview" id="bankToPrev"></div>
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field"><label for="bankAmount">Amount</label>
+              <div class="amount-input"><span class="cur"></span>
+                <input id="bankAmount" name="amount" type="number" min="0.01" step="0.01" placeholder="0.00" required></div>
+              <div class="chips" data-for="bankAmount"></div></div>
+            <div class="field"><label for="bankNote">Note <span class="opt">optional</span></label>
+              <input id="bankNote" name="note" maxlength="100"></div>
+          </div>
+          <div class="form-error" id="bankError"></div>
+          <button class="btn primary" type="submit">Review transfer</button>
+        </form>
+
+        <h2 class="section-title">Recent bank transactions</h2>
+        <div class="card flush"><ul class="txn-list" id="bankTxns"></ul></div>
+      </section>
+
+      <!-- ---------- All accounts ---------- -->
+      <section class="view" data-view="accounts">
+        <div class="stat-row" id="acctStats"></div>
+        <div class="card flush">
+          <div class="table-tools">
+            <input type="search" id="acctSearch" placeholder="Search by name or account number…" aria-label="Search accounts">
+          </div>
+          <div class="table-wrap">
+            <table class="table" id="acctTable">
+              <thead><tr><th>Account</th><th>Holder</th><th>Type</th><th class="num">Balance</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- AI agents ---------- -->
+      <section class="view" data-view="assistant"><div class="chat" data-agent="assistant"
+        data-intro="Hi! I can check your balances and transactions, add beneficiaries and prepare transfers. Transfers only go through after you press Confirm."
+        data-suggestions="What's my balance?|Show my last 5 transactions|Add 1000000003 as a beneficiary called Rahul|Send 500 to Rahul for lunch"></div></section>
+
+      <section class="view" data-view="help"><div class="chat" data-agent="support"
+        data-intro="Hello! Ask me anything about using the app or the bank's rules. I can't see any account details."
+        data-suggestions="How do I add a beneficiary?|What is the transfer limit?|Can I reverse a transfer?|How do I open an account?"></div></section>
+
+      <section class="view" data-view="ops-assistant">
+        <div class="notice">Staff assistant: it can see every account and prepare transfers between any two accounts. Transfers still need your confirmation.</div>
+        <div class="chat" data-agent="operations"
+        data-intro="Hi! I can look up accounts and activity, summarise the bank, work through fraud alerts, and prepare transfers between accounts."
+        data-suggestions="Give me a bank summary|Which accounts have the lowest balances?|Show the open fraud alerts|Show the last 10 transactions"></div></section>
+
+      <section class="view" data-view="fraud">
+        <div class="section-head" style="margin-bottom:12px">
+          <p class="muted" style="margin:0">The fraud monitor reviews large or unusual transfers after they happen and flags the risky ones here.</p>
+          <div class="seg seg-inline" role="radiogroup" id="fraudFilter">
+            <label><input type="radio" name="fraudStatus" value="OPEN" checked><span>Open</span></label>
+            <label><input type="radio" name="fraudStatus" value="RESOLVED"><span>Resolved</span></label>
+            <label><input type="radio" name="fraudStatus" value=""><span>All</span></label>
+          </div>
+        </div>
+        <div class="alert-list" id="fraudList"></div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ================= Modal & toasts ================= -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-icon" id="modalIcon"></div>
+    <h3 id="modalTitle"></h3>
+    <div class="modal-amount" id="modalAmount"></div>
+    <dl class="kv" id="modalRows"></dl>
+    <div class="modal-actions">
+      <button class="btn" id="modalCancel" type="button">Cancel</button>
+      <button class="btn primary" id="modalOk" type="button">Confirm</button>
+    </div>
+  </div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

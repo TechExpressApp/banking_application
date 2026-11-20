@@ -9,7 +9,7 @@ H2 database file in `data/`, so it runs with no setup.
 ```bash
 mvn spring-boot:run            # or: mvn package && java -jar target/banking-application-1.0.0.jar
 ```
-Open http://localhost:8080
+Open http://localhost:8080/banking-application/
 
 On the first start the app creates **10 sample accounts** (`1000000001` to `1000000010`, customers `CUST001` to `CUST010`).
 All sample customers log in with the password **`Password@123`**, for example `aarav.sharma@example.com`.
@@ -51,6 +51,9 @@ even across several server instances.
 See [docs/deploy-vercel.md](docs/deploy-vercel.md). The app runs as a Docker container on Vercel's Container runtime, with data in Supabase.
 
 ## REST API
+
+All paths below are under the base path `/banking-application` (for example `/banking-application/api/accounts`).
+Change it with the `BASE_PATH` environment variable.
 
 | Method | Path | Auth |
 |---|---|---|

@@ -84,7 +84,8 @@ async function api(path, { method = 'GET', body } = {}) {
   if (state.token) headers.Authorization = 'Bearer ' + state.token;
   let res;
   try {
-    res = await fetch('/api' + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    // Relative URL, so the app works under any base path (e.g. /banking-application/).
+    res = await fetch('api' + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   } catch (_) {
     throw new Error('Cannot reach the server. Is the backend running?');
   }

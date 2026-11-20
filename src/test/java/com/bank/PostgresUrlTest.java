@@ -22,6 +22,7 @@ class PostgresUrlTest {
         PostgresUrl p = PostgresUrl.parse("postgresql://u:p@db.example.com/mydb");
         assertTrue(p.jdbcUrl().startsWith("jdbc:postgresql://db.example.com:5432/mydb?sslmode=require"));
         assertTrue(PostgresUrl.parse("postgresql://u:p@localhost:5432/x").jdbcUrl().contains("sslmode=disable"));
+        assertEquals("u", PostgresUrl.parse("\"postgres://u:p@h:6543/postgres?sslmode=require\"").user());
         assertThrows(IllegalArgumentException.class, () -> PostgresUrl.parse("mysql://u:p@h/db"));
         assertThrows(IllegalArgumentException.class, () -> PostgresUrl.parse("postgresql://h/db"));
     }

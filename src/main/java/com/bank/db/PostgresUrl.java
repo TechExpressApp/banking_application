@@ -12,6 +12,10 @@ public record PostgresUrl(String jdbcUrl, String user, String password, String h
 
     public static PostgresUrl parse(String raw) {
         String s = raw.trim();
+        // Values copied from a .env file often keep their quotes.
+        if (s.length() >= 2 && (s.startsWith("\"") && s.endsWith("\"") || s.startsWith("'") && s.endsWith("'"))) {
+            s = s.substring(1, s.length() - 1).trim();
+        }
         if (s.startsWith("jdbc:postgresql://")) return new PostgresUrl(s, null, null, "(jdbc url)", 0, "");
         if (!s.startsWith("postgres://") && !s.startsWith("postgresql://")) {
             throw new IllegalArgumentException("Database URL must start with postgresql:// or postgres://");

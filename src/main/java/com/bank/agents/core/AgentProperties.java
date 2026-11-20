@@ -19,6 +19,10 @@ public class AgentProperties {
     private int maxToolRounds = 8;
     /** Send the server-side refusal fallback (beta) with every request. */
     private boolean fallbacks = true;
+    /** Claude API key; normally set in config/application-local.properties (git-ignored), else ANTHROPIC_API_KEY is used. */
+    private String apiKey;
+    /** Workspace to use with an API key that isn't scoped to a workspace (sk-ant-usr-...). */
+    private String workspaceId;
     private Map<String, Override> overrides = new HashMap<>();
     private Fraud fraud = new Fraud();
 
@@ -69,6 +73,10 @@ public class AgentProperties {
     public void setMaxTokens(long maxTokens) { this.maxTokens = maxTokens; }
     public int getMaxToolRounds() { return maxToolRounds; }
     public void setMaxToolRounds(int maxToolRounds) { this.maxToolRounds = maxToolRounds; }
+    public String getApiKey() { return apiKey; }
+    public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+    public String getWorkspaceId() { return workspaceId; }
+    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
     public boolean isFallbacks() { return fallbacks; }
     public void setFallbacks(boolean fallbacks) { this.fallbacks = fallbacks; }
     public Map<String, Override> getOverrides() { return overrides; }

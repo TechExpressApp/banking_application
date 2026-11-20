@@ -9,3 +9,6 @@ credentials.json
 .vscode/
 *.log
 .env
+
+# Local secrets
+/config/application-local.properties

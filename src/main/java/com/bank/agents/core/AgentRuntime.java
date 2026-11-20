@@ -113,7 +113,7 @@ public class AgentRuntime {
             if (e.statusCode() == 401 || e.statusCode() == 403) {
                 log.warn("Claude API rejected the credentials: {}", e.getMessage());
                 throw new BankException(HttpStatus.SERVICE_UNAVAILABLE,
-                        "The AI agents are not set up yet: set ANTHROPIC_API_KEY and restart the server.");
+                        "The AI agents are not set up yet: add your API key to config/application-local.properties and restart the server.");
             }
             log.warn("Claude API error {}: {}", e.statusCode(), e.getMessage());
             throw new BankException(HttpStatus.BAD_GATEWAY, "The assistant is unavailable (" + e.statusCode() + ")");

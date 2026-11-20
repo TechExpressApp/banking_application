@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * Minimal tabular storage. Each table is a named sheet/file whose first row is the header.
- * Implementations: {@link CsvTableStore} (local files) and {@link GoogleSheetsTableStore}.
+ * Used only by {@link CsvTableStore} to import the old CSV data into the database.
  */
 public interface TableStore {
 

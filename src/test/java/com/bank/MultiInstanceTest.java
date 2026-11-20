@@ -1,57 +1,60 @@
 package com.bank;
 
-import com.bank.repo.BankRepository;
 import com.bank.service.BankException;
 import com.bank.service.BankService;
 import com.bank.service.SessionService;
-import com.bank.store.CsvTableStore;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
-import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Two server instances sharing one store (as on Vercel with a Google Sheet) must not lose each other's writes. */
+/** Several server instances sharing one database (as on Vercel with Supabase). */
 class MultiInstanceTest {
 
-    @TempDir Path dir;
-
-    private BankService instance(BankRepository[] out) throws Exception {
-        var encoder = new BCryptPasswordEncoder(4);
-        BankRepository repo = new BankRepository(new CsvTableStore(dir), encoder, "Password@123");
-        Method load = BankRepository.class.getDeclaredMethod("load");
-        load.setAccessible(true);
-        load.invoke(repo);
-        out[0] = repo;
-        return new BankService(repo, encoder, e -> { });
+    @Test
+    void writesFromOneInstanceAreSeenByTheOther() {
+        TestBank tb = TestBank.create();
+        BankService a = tb.bank, b = tb.anotherInstance().bank;
+        a.transfer("1000000001", "1000000002", new BigDecimal("1000"), "T", "");
+        b.transfer("1000000001", "1000000003", new BigDecimal("500"), "T", "");
+        assertEquals(new BigDecimal("23500.00"), a.account("1000000001").balance());
+        assertEquals(new BigDecimal("72500.00"), a.account("1000000003").balance());
+        assertEquals(2, b.recentTransactions(10).size());
     }
 
     @Test
-    void writesFromOneInstanceAreSeenByTheOther() throws Exception {
-        BankRepository[] ra = new BankRepository[1], rb = new BankRepository[1];
-        BankService a = instance(ra);
-        BankService b = instance(rb);           // both loaded the same starting data
-
-        a.transfer("1000000001", "1000000002", new BigDecimal("1000"), "T", "");   // on instance A
-        b.transfer("1000000001", "1000000003", new BigDecimal("500"), "T", "");    // B must see A's change first
-
-        BankService fresh = instance(new BankRepository[1]);
-        assertEquals(new BigDecimal("23500.00"), fresh.account("1000000001").balance(), "neither transfer was lost");
-        assertEquals(new BigDecimal("19500.50"), fresh.account("1000000002").balance());
-        assertEquals(new BigDecimal("72500.00"), fresh.account("1000000003").balance());
-        assertEquals(2, fresh.recentTransactions(10).size());
+    void registrationOnOneInstanceCanLogInOnTheOther() {
+        TestBank tb = TestBank.create();
+        tb.bank.register("New Person", "new@example.com", "", "secret123", "SAVINGS", BigDecimal.TEN);
+        assertEquals("new@example.com", tb.anotherInstance().bank.authenticate("new@example.com", "secret123").email());
     }
 
     @Test
-    void registrationOnOneInstanceCanLogInOnTheOther() throws Exception {
-        BankService a = instance(new BankRepository[1]);
-        BankService b = instance(new BankRepository[1]);
-        a.register("New Person", "new@example.com", "", "secret123", "SAVINGS", BigDecimal.TEN);
-        assertEquals("new@example.com", b.authenticate("new@example.com", "secret123").email());
+    void concurrentTransfersOnTwoInstancesNeverOverspend() throws Exception {
+        TestBank tb = TestBank.create();
+        BankService[] instances = {tb.bank, tb.anotherInstance().bank};
+        // Arjun (1000000007) has 5600.00; 20 transfers of 500 race from two instances: exactly 11 can succeed.
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        List<Future<Boolean>> results = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            BankService s = instances[i % 2];
+            String to = String.valueOf(1000000001L + (i % 5));
+            results.add(pool.submit(() -> {
+                try { s.transfer("1000000007", to, new BigDecimal("500"), "T", ""); return true; }
+                catch (BankException e) { return false; }
+            }));
+        }
+        int ok = 0;
+        for (Future<Boolean> f : results) if (f.get()) ok++;
+        pool.shutdown();
+        assertEquals(11, ok);
+        assertEquals(new BigDecimal("100.00"), tb.bank.account("1000000007").balance());
     }
 
     @Test

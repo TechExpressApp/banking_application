@@ -2,22 +2,17 @@ package com.bank.agents;
 
 import com.bank.agents.assistant.BankingAssistantAgent;
 import com.bank.agents.core.*;
-import com.bank.agents.fraud.FraudAlertStore;
+import com.bank.TestBank;
 import com.bank.agents.fraud.FraudMonitorAgent;
 import com.bank.agents.operations.OperationsAgent;
 import com.bank.model.Transaction;
 import com.bank.repo.BankRepository;
 import com.bank.service.BankException;
 import com.bank.service.BankService;
-import com.bank.store.CsvTableStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
-import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,7 +20,6 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Exercises the agents' tools and safety rules directly, without calling the Claude API. */
 class AgentToolsTest {
 
-    @TempDir Path dir;
     BankRepository repo;
     BankService bank;
     PendingActionStore pending;
@@ -34,19 +28,14 @@ class AgentToolsTest {
     ToolContext aarav;
 
     @BeforeEach
-    void setUp() throws Exception {
-        var encoder = new BCryptPasswordEncoder(4);
-        CsvTableStore store = new CsvTableStore(dir);
-        repo = new BankRepository(store, encoder, "Password@123");
-        Method load = BankRepository.class.getDeclaredMethod("load");
-        load.setAccessible(true);
-        load.invoke(repo);
-        bank = new BankService(repo, encoder, e -> { });
+    void setUp() {
+        TestBank tb = TestBank.create();
+        repo = tb.repo;
+        bank = tb.bank;
         pending = new PendingActionStore();
         assistant = new BankingAssistantAgent(bank).definition();
-        FraudAlertStore alerts = new FraudAlertStore(store);
-        operations = new OperationsAgent(bank, alerts).definition();
-        fraud = new FraudMonitorAgent(null, new AgentProperties(), bank, alerts);
+        operations = new OperationsAgent(bank, tb.alerts).definition();
+        fraud = new FraudMonitorAgent(null, new AgentProperties(), bank, tb.alerts);
         aarav = new ToolContext("CUST:CUST001", "CUST001", "conv-1", pending);
     }
 

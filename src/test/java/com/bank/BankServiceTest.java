@@ -4,15 +4,10 @@ import com.bank.model.Transaction;
 import com.bank.repo.BankRepository;
 import com.bank.service.BankException;
 import com.bank.service.BankService;
-import com.bank.store.CsvTableStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
@@ -21,18 +16,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BankServiceTest {
 
-    @TempDir Path dir;
+    TestBank tb;
     BankRepository repo;
     BankService bank;
 
     @BeforeEach
-    void setUp() throws Exception {
-        var encoder = new BCryptPasswordEncoder(4);
-        repo = new BankRepository(new CsvTableStore(dir), encoder, "Password@123");
-        Method load = BankRepository.class.getDeclaredMethod("load");
-        load.setAccessible(true);
-        load.invoke(repo);
-        bank = new BankService(repo, encoder, event -> { });
+    void setUp() {
+        tb = TestBank.create();
+        repo = tb.repo;
+        bank = tb.bank;
     }
 
     private BigDecimal balance(String acc) {
@@ -52,8 +44,9 @@ class BankServiceTest {
         assertEquals(new BigDecimal("19500.50"), balance("1000000002"));
         assertEquals(new BigDecimal("1000.00"), t.amount());
 
-        // reload from disk: balances and transaction survive
-        setUp();
+        // a second server instance on the same database sees the same data
+        bank = tb.anotherInstance().bank;
+        repo = tb.anotherInstance().repo;
         assertEquals(new BigDecimal("24000.00"), balance("1000000001"));
         assertEquals(1, bank.recentTransactions(10).size());
     }

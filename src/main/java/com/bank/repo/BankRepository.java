@@ -4,92 +4,92 @@ import com.bank.model.Account;
 import com.bank.model.Beneficiary;
 import com.bank.model.Customer;
 import com.bank.model.Transaction;
-import com.bank.store.TableStore;
+import com.bank.store.CsvTableStore;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
-import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
- * Keeps all bank data in memory and writes every change through to the {@link TableStore}
- * (Google Sheet or CSV). All access goes through {@link #lock} so balances stay consistent.
+ * Bank data in a SQL database (Supabase/PostgreSQL in production, H2 locally). Tables are in the "bank" schema
+ * (see schema.sql). Callers wrap multi-step changes in a transaction; {@link #findAccountForUpdate} locks a row.
  */
 @Repository
 public class BankRepository {
 
-    public static final String CUSTOMERS = "Customers";
-    public static final String ACCOUNTS = "Accounts";
-    public static final String BENEFICIARIES = "Beneficiaries";
-    public static final String TRANSACTIONS = "Transactions";
-
     private static final Logger log = LoggerFactory.getLogger(BankRepository.class);
 
-    public final Object lock = new Object();
-
-    private final TableStore store;
+    private final JdbcTemplate jdbc;
+    private final TransactionTemplate tx;
     private final PasswordEncoder encoder;
     private final String seedPassword;
+    private final String importDir;
 
-    private final Map<String, Customer> customers = new LinkedHashMap<>();
-    private final Map<String, Account> accounts = new LinkedHashMap<>();
-    private final Map<String, Beneficiary> beneficiaries = new LinkedHashMap<>();
-    private final List<Transaction> transactions = new ArrayList<>();
+    private static final RowMapper<Customer> CUSTOMER = (rs, i) -> new Customer(rs.getString("customer_id"),
+            rs.getString("full_name"), rs.getString("email"), rs.getString("phone"), rs.getString("password_hash"),
+            rs.getString("created_at"));
+    private static final RowMapper<Account> ACCOUNT = (rs, i) -> new Account(rs.getString("account_number"),
+            rs.getString("customer_id"), rs.getString("holder_name"), rs.getString("account_type"),
+            rs.getBigDecimal("balance"), rs.getString("created_at"));
+    private static final RowMapper<Beneficiary> BENEFICIARY = (rs, i) -> new Beneficiary(rs.getString("beneficiary_id"),
+            rs.getString("customer_id"), rs.getString("nickname"), rs.getString("account_number"),
+            rs.getString("holder_name"), rs.getString("added_at"));
+    private static final RowMapper<Transaction> TRANSACTION = (rs, i) -> new Transaction(rs.getString("transaction_id"),
+            rs.getString("created_at"), rs.getString("from_account"), rs.getString("to_account"),
+            rs.getBigDecimal("amount"), rs.getString("initiated_by"), rs.getString("note"));
 
-    public BankRepository(TableStore store, PasswordEncoder encoder,
-                          @Value("${banking.seed.default-password}") String seedPassword) {
-        this.store = store;
+    public BankRepository(JdbcTemplate jdbc, TransactionTemplate tx, PasswordEncoder encoder,
+                          @Value("${banking.seed.default-password}") String seedPassword,
+                          @Value("${banking.import.csv-dir:./data}") String importDir) {
+        this.jdbc = jdbc;
+        this.tx = tx;
         this.encoder = encoder;
         this.seedPassword = seedPassword;
+        this.importDir = importDir;
     }
 
-    /** Reads older than this are served from memory; writes always re-read first. */
-    private static final long READ_TTL_MS = 3000;
-    private long lastRefresh;
-
+    /** First start against an empty database: import ./data/*.csv if present, otherwise create sample data. */
     @PostConstruct
-    void load() {
-        synchronized (lock) {
-            readTables();
-            if (accounts.isEmpty()) seed();
-            log.info("Loaded {} customers, {} accounts, {} beneficiaries, {} transactions",
-                    customers.size(), accounts.size(), beneficiaries.size(), transactions.size());
-        }
-    }
-
-    private void readTables() {
-        List<List<String>> c = store.readAll(CUSTOMERS), a = store.readAll(ACCOUNTS),
-                b = store.readAll(BENEFICIARIES), t = store.readAll(TRANSACTIONS);
-        customers.clear(); accounts.clear(); beneficiaries.clear(); transactions.clear();
-        c.forEach(r -> put(customers, Customer.fromRow(r), Customer::customerId));
-        a.forEach(r -> put(accounts, Account.fromRow(r), Account::accountNumber));
-        b.forEach(r -> put(beneficiaries, Beneficiary.fromRow(r), Beneficiary::beneficiaryId));
-        t.forEach(r -> transactions.add(Transaction.fromRow(r)));
-        lastRefresh = System.currentTimeMillis();
-    }
-
-    /**
-     * Re-reads every table so this instance sees changes made by other server instances (e.g. on Vercel,
-     * where several instances share one Google Sheet). Call while holding {@link #lock}.
-     * @param beforeWrite true before any change: always re-read, so we never save over newer data
-     */
-    public void refresh(boolean beforeWrite) {
-        if (!beforeWrite && System.currentTimeMillis() - lastRefresh < READ_TTL_MS) return;
-        if (store.readAll(ACCOUNTS).isEmpty() && !accounts.isEmpty()) {
-            // Never replace good data with an empty read (e.g. the sheet was cleared by hand).
-            log.warn("Accounts table read back empty; keeping the data already in memory");
+    public void initData() {
+        if (count("bank.accounts") > 0) {
+            log.info("Database has {} customers, {} accounts, {} transactions",
+                    count("bank.customers"), count("bank.accounts"), count("bank.transactions"));
             return;
         }
-        readTables();
+        try {
+            Path dir = importDir == null || importDir.isBlank() ? null : Path.of(importDir);
+            if (dir != null && Files.exists(dir.resolve("Accounts.csv"))) importCsv(dir);
+            else seed();
+        } catch (DuplicateKeyException e) {
+            log.info("Another server instance is initialising the database at the same time; using its data");
+        }
     }
 
-    /** Creates the 10 sample customers/accounts the first time the app runs against an empty store. */
+    private void importCsv(Path dir) {
+        CsvTableStore csv = new CsvTableStore(dir);
+        tx.executeWithoutResult(s -> {
+            csv.readAll("Customers").forEach(r -> insertCustomer(Customer.fromRow(r)));
+            csv.readAll("Accounts").forEach(r -> insertAccount(Account.fromRow(r)));
+            csv.readAll("Beneficiaries").forEach(r -> insertBeneficiary(Beneficiary.fromRow(r)));
+            csv.readAll("Transactions").forEach(r -> insertTransaction(Transaction.fromRow(r)));
+        });
+        log.info("Imported existing data from {}: {} customers, {} accounts, {} transactions",
+                dir.toAbsolutePath(), count("bank.customers"), count("bank.accounts"), count("bank.transactions"));
+    }
+
     private void seed() {
         String[][] sample = {
                 {"Aarav Sharma", "aarav.sharma@example.com", "9000000001", "SAVINGS", "25000.00"},
@@ -105,97 +105,116 @@ public class BankRepository {
         };
         String now = Instant.now().toString();
         String hash = encoder.encode(seedPassword);
-        for (int i = 0; i < sample.length; i++) {
-            String[] s = sample[i];
-            String custId = String.format("CUST%03d", i + 1);
-            String accNo = String.valueOf(1000000001L + i);
-            put(customers, new Customer(custId, s[0], s[1], s[2], hash, now), Customer::customerId);
-            put(accounts, new Account(accNo, custId, s[0], s[3], new BigDecimal(s[4]), now), Account::accountNumber);
-        }
-        flush(CUSTOMERS);
-        flush(ACCOUNTS);
-        flush(BENEFICIARIES);
-        flush(TRANSACTIONS);
+        tx.executeWithoutResult(s -> {
+            for (int i = 0; i < sample.length; i++) {
+                String[] r = sample[i];
+                String custId = String.format("CUST%03d", i + 1);
+                insertCustomer(new Customer(custId, r[0], r[1], r[2], hash, now));
+                insertAccount(new Account(String.valueOf(1000000001L + i), custId, r[0], r[3], new BigDecimal(r[4]), now));
+            }
+        });
         log.info("Seeded 10 sample accounts (password for all sample customers: {})", seedPassword);
     }
 
-    private static <T> void put(Map<String, T> map, T item, Function<T, String> key) {
-        map.put(key.apply(item), item);
-    }
-
-    // ---------- persistence ----------
-
-    public void flush(String table) {
-        switch (table) {
-            case CUSTOMERS -> store.writeAll(CUSTOMERS, Customer.HEADER, customers.values().stream().map(Customer::toRow).toList());
-            case ACCOUNTS -> store.writeAll(ACCOUNTS, Account.HEADER, accounts.values().stream().map(Account::toRow).toList());
-            case BENEFICIARIES -> store.writeAll(BENEFICIARIES, Beneficiary.HEADER, beneficiaries.values().stream().map(Beneficiary::toRow).toList());
-            case TRANSACTIONS -> store.writeAll(TRANSACTIONS, Transaction.HEADER, transactions.stream().map(Transaction::toRow).toList());
-            default -> throw new IllegalArgumentException(table);
-        }
+    private int count(String table) {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class);
+        return n == null ? 0 : n;
     }
 
     // ---------- customers ----------
 
-    public Optional<Customer> findCustomer(String id) { return Optional.ofNullable(customers.get(id)); }
-
-    public Optional<Customer> findCustomerByEmail(String email) {
-        return customers.values().stream().filter(c -> c.email().equalsIgnoreCase(email)).findFirst();
+    public Optional<Customer> findCustomer(String id) {
+        return jdbc.query("SELECT * FROM bank.customers WHERE customer_id = ?", CUSTOMER, id).stream().findFirst();
     }
 
-    public void saveCustomer(Customer c) { customers.put(c.customerId(), c); }
+    public Optional<Customer> findCustomerByEmail(String email) {
+        return jdbc.query("SELECT * FROM bank.customers WHERE LOWER(email) = LOWER(?)", CUSTOMER, email).stream().findFirst();
+    }
+
+    public void insertCustomer(Customer c) {
+        jdbc.update("INSERT INTO bank.customers (customer_id, full_name, email, phone, password_hash, created_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?)", c.customerId(), c.fullName(), c.email(), c.phone(), c.passwordHash(), c.createdAt());
+    }
 
     public String nextCustomerId() {
-        int max = customers.keySet().stream().mapToInt(k -> Integer.parseInt(k.substring(4))).max().orElse(0);
+        int max = jdbc.queryForList("SELECT customer_id FROM bank.customers", String.class).stream()
+                .filter(id -> id.matches("CUST\\d+")).mapToInt(id -> Integer.parseInt(id.substring(4))).max().orElse(0);
         return String.format("CUST%03d", max + 1);
     }
 
-    public void removeCustomer(String id) { customers.remove(id); }
-
     // ---------- accounts ----------
 
-    public Collection<Account> allAccounts() { return accounts.values(); }
-
-    public Optional<Account> findAccount(String accountNumber) { return Optional.ofNullable(accounts.get(accountNumber)); }
-
-    public List<Account> accountsOf(String customerId) {
-        return accounts.values().stream().filter(a -> a.customerId().equals(customerId)).toList();
+    public List<Account> allAccounts() {
+        return jdbc.query("SELECT * FROM bank.accounts ORDER BY account_number", ACCOUNT);
     }
 
-    public void saveAccount(Account a) { accounts.put(a.accountNumber(), a); }
+    public Optional<Account> findAccount(String accountNumber) {
+        return jdbc.query("SELECT * FROM bank.accounts WHERE account_number = ?", ACCOUNT, accountNumber).stream().findFirst();
+    }
 
-    public void removeAccount(String accountNumber) { accounts.remove(accountNumber); }
+    /** Locks the row until the surrounding transaction ends, so concurrent transfers queue up. */
+    public Optional<Account> findAccountForUpdate(String accountNumber) {
+        return jdbc.query("SELECT * FROM bank.accounts WHERE account_number = ? FOR UPDATE", ACCOUNT, accountNumber)
+                .stream().findFirst();
+    }
+
+    public List<Account> accountsOf(String customerId) {
+        return jdbc.query("SELECT * FROM bank.accounts WHERE customer_id = ? ORDER BY account_number", ACCOUNT, customerId);
+    }
+
+    public void insertAccount(Account a) {
+        jdbc.update("INSERT INTO bank.accounts (account_number, customer_id, holder_name, account_type, balance, created_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?)", a.accountNumber(), a.customerId(), a.holderName(), a.accountType(), a.balance(), a.createdAt());
+    }
+
+    public void addToBalance(String accountNumber, BigDecimal delta) {
+        int n = jdbc.update("UPDATE bank.accounts SET balance = balance + ? WHERE account_number = ?", delta, accountNumber);
+        if (n != 1) throw new IllegalStateException("Account " + accountNumber + " not updated");
+    }
 
     public String nextAccountNumber() {
-        long max = accounts.keySet().stream().mapToLong(Long::parseLong).max().orElse(1000000000L);
-        return String.valueOf(max + 1);
+        String max = jdbc.queryForObject("SELECT MAX(account_number) FROM bank.accounts", String.class);
+        return String.valueOf((max == null ? 1000000000L : Long.parseLong(max)) + 1);
     }
 
     // ---------- beneficiaries ----------
 
     public List<Beneficiary> beneficiariesOf(String customerId) {
-        return beneficiaries.values().stream().filter(b -> b.customerId().equals(customerId)).toList();
+        return jdbc.query("SELECT * FROM bank.beneficiaries WHERE customer_id = ? ORDER BY added_at", BENEFICIARY, customerId);
     }
 
-    public Optional<Beneficiary> findBeneficiary(String id) { return Optional.ofNullable(beneficiaries.get(id)); }
+    public Optional<Beneficiary> findBeneficiary(String id) {
+        return jdbc.query("SELECT * FROM bank.beneficiaries WHERE beneficiary_id = ?", BENEFICIARY, id).stream().findFirst();
+    }
 
-    public void saveBeneficiary(Beneficiary b) { beneficiaries.put(b.beneficiaryId(), b); }
+    public void insertBeneficiary(Beneficiary b) {
+        jdbc.update("INSERT INTO bank.beneficiaries (beneficiary_id, customer_id, nickname, account_number, holder_name, added_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?)", b.beneficiaryId(), b.customerId(), b.nickname(), b.accountNumber(), b.holderName(), b.addedAt());
+    }
 
-    public Beneficiary removeBeneficiary(String id) { return beneficiaries.remove(id); }
+    public boolean deleteBeneficiary(String id, String customerId) {
+        return jdbc.update("DELETE FROM bank.beneficiaries WHERE beneficiary_id = ? AND customer_id = ?", id, customerId) == 1;
+    }
 
     // ---------- transactions ----------
 
-    public void addTransaction(Transaction t) { transactions.add(t); }
-
-    public void removeLastTransaction() { transactions.removeLast(); }
+    public void insertTransaction(Transaction t) {
+        jdbc.update("INSERT INTO bank.transactions (transaction_id, created_at, from_account, to_account, amount, initiated_by, note) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?)", t.transactionId(), t.timestamp(), t.fromAccount(), t.toAccount(), t.amount(),
+                t.initiatedBy(), t.note() == null ? "" : t.note());
+    }
 
     public List<Transaction> recentTransactions(int limit) {
-        return transactions.reversed().stream().limit(limit).toList();
+        return jdbc.query("SELECT * FROM bank.transactions ORDER BY seq DESC LIMIT ?", TRANSACTION, limit);
     }
 
     public List<Transaction> transactionsFor(Set<String> accountNumbers, int limit) {
-        return transactions.reversed().stream()
-                .filter(t -> accountNumbers.contains(t.fromAccount()) || accountNumbers.contains(t.toAccount()))
-                .limit(limit).toList();
+        if (accountNumbers.isEmpty()) return List.of();
+        String in = accountNumbers.stream().map(a -> "?").collect(Collectors.joining(","));
+        List<Object> args = new ArrayList<>(accountNumbers);
+        args.addAll(accountNumbers);
+        args.add(limit);
+        return jdbc.query("SELECT * FROM bank.transactions WHERE from_account IN (" + in + ") OR to_account IN (" + in + ") "
+                + "ORDER BY seq DESC LIMIT ?", TRANSACTION, args.toArray());
     }
 }

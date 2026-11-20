@@ -1,8 +1,8 @@
 # Banking Application
 
 Java 21 / Spring Boot 3.5 backend with a browser UI for moving money between customer accounts.
-Data lives in a **Google Sheet** (one tab each for Accounts, Customers, Beneficiaries and Transactions).
-If you haven't set up a sheet, it uses local CSV files instead.
+Data lives in a **PostgreSQL database on Supabase**. Without a database configured, the app uses a local
+H2 database file in `data/`, so it runs with no setup.
 
 ## Run
 
@@ -30,25 +30,25 @@ Transfer rules: the amount must be positive, have at most 2 decimals and be no m
 Source and target must be different accounts. Customers can only send from their own accounts and only to their own beneficiaries.
 Transfers are atomic: if saving fails, the balances are rolled back.
 
-## Use a Google Sheet as the database
+## Use Supabase as the database
 
-1. In Google Cloud Console, create a project, **enable the Google Sheets API**, create a **Service Account**
-   and download its JSON key as `credentials.json` in the project root.
-2. Create an empty Google Sheet. **Share** it with the service account's e-mail (`...@...iam.gserviceaccount.com`) as **Editor**.
-3. Copy the spreadsheet ID from its URL: `https://docs.google.com/spreadsheets/d/<THIS_PART>/edit`.
-4. Run:
-   ```bash
-   BANKING_STORAGE=sheets BANKING_SHEET_ID=<id> BANKING_SHEET_CREDENTIALS=./credentials.json mvn spring-boot:run
+1. Create a Supabase project (at https://supabase.com, or in Vercel under **Storage → Create Database → Supabase**).
+2. Copy its connection string from **Project Settings → Database → Connection string** (URI).
+   Use the **pooler** string; it works over IPv4.
+3. Put it in the git-ignored `config/application-local.properties`:
+   ```properties
+   banking.database.url=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres
    ```
-   On the first start the app creates the `Accounts`, `Customers`, `Beneficiaries` and `Transactions` tabs and fills in the 10 sample accounts.
-   Every registration, beneficiary change and transfer is written to the sheet right away.
+   You can also set it as the `POSTGRES_URL` environment variable.
+4. Start the app. It creates its tables in a separate `bank` schema, which is not exposed through Supabase's public web API.
+   If the database is empty, it imports `data/*.csv` (the old file storage) if present; otherwise it creates the 10 sample accounts.
 
-> The app loads the sheet into memory when it starts. If you edit the sheet by hand while the app is running, restart the app to pick up your edits.
-> Otherwise the app's next write overwrites them.
+Every transfer runs in a database transaction that locks both accounts, so concurrent transfers can't overspend,
+even across several server instances.
 
 ## Deploy to Vercel
 
-See [docs/deploy-vercel.md](docs/deploy-vercel.md). The app runs as a Docker container on Vercel's Container runtime, with data in a Google Sheet.
+See [docs/deploy-vercel.md](docs/deploy-vercel.md). The app runs as a Docker container on Vercel's Container runtime, with data in Supabase.
 
 ## REST API
 
@@ -71,7 +71,9 @@ See [docs/deploy-vercel.md](docs/deploy-vercel.md). The app runs as a Docker con
 
 ```
 src/main/java/com/bank/
-  store/    TableStore, CsvTableStore, GoogleSheetsTableStore, StoreConfig
+  db/       DatabaseConfig (Supabase/PostgreSQL or local H2), PostgresUrl
+  store/    CsvTableStore (one-time import of the old CSV data)
+src/main/resources/schema.sql  tables (bank schema)
   model/    Customer, Account, Beneficiary, Transaction
   repo/     BankRepository (in-memory cache that writes every change to the store, seeds the sample data)
   service/  BankService (register, login, beneficiaries, transfers), SessionService

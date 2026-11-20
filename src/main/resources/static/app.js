@@ -640,7 +640,15 @@ async function sendChat(c, text) {
   addRow(c, 'user', el('div', { class: 'bubble' }, text));
   const typing = addRow(c, 'bot', el('div', { class: 'bubble typing' }, el('span'), el('span'), el('span')));
   try {
-    const r = await api(`/agents/${c.agent}/chat`, { method: 'POST', body: { conversationId: c.conversationId, message: text } });
+    let r;
+    try {
+      r = await api(`/agents/${c.agent}/chat`, { method: 'POST', body: { conversationId: c.conversationId, message: text } });
+    } catch (err) {
+      // The server restarted or another instance answered: start a fresh conversation and retry once.
+      if (!c.conversationId || !/conversation expired/i.test(err.message)) throw err;
+      c.conversationId = null;
+      r = await api(`/agents/${c.agent}/chat`, { method: 'POST', body: { conversationId: null, message: text } });
+    }
     c.conversationId = r.conversationId;
     typing.replaceWith();
     const wrap = addBot(c, r.reply).lastChild;

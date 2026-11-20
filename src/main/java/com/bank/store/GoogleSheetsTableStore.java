@@ -28,12 +28,17 @@ public class GoogleSheetsTableStore implements TableStore {
     private final String spreadsheetId;
     private final Set<String> knownTabs = new HashSet<>();
 
-    public GoogleSheetsTableStore(String spreadsheetId, String credentialsFile) {
+    /**
+     * @param credentialsJson service-account key JSON (e.g. from a hosting secret); if blank, credentialsFile is read
+     */
+    public GoogleSheetsTableStore(String spreadsheetId, String credentialsFile, String credentialsJson) {
         if (spreadsheetId == null || spreadsheetId.isBlank()) {
             throw new IllegalStateException("banking.sheets.spreadsheet-id (env BANKING_SHEET_ID) is required for sheets storage");
         }
         this.spreadsheetId = spreadsheetId;
-        try (InputStream in = new FileInputStream(credentialsFile)) {
+        try (InputStream in = credentialsJson != null && !credentialsJson.isBlank()
+                ? new java.io.ByteArrayInputStream(credentialsJson.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                : new FileInputStream(credentialsFile)) {
             GoogleCredentials creds = GoogleCredentials.fromStream(in).createScoped(List.of(SheetsScopes.SPREADSHEETS));
             this.sheets = new Sheets.Builder(GoogleNetHttpTransport.newTrustedTransport(),
                     GsonFactory.getDefaultInstance(), new HttpCredentialsAdapter(creds))
@@ -77,11 +82,13 @@ public class GoogleSheetsTableStore implements TableStore {
             List<List<Object>> values = new ArrayList<>();
             values.add(new ArrayList<>(header));
             rows.forEach(r -> values.add(new ArrayList<>(r)));
-            sheets.spreadsheets().values().clear(spreadsheetId, table + "!A:Z", new ClearValuesRequest()).execute();
+            // Write the new rows first, then clear any old rows below them, so a reader never sees an empty table.
             sheets.spreadsheets().values()
                     .update(spreadsheetId, table + "!A1", new ValueRange().setValues(values))
                     .setValueInputOption("RAW")       // keep account numbers / amounts as text, exactly as written
                     .execute();
+            sheets.spreadsheets().values()
+                    .clear(spreadsheetId, table + "!A" + (values.size() + 1) + ":Z", new ClearValuesRequest()).execute();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

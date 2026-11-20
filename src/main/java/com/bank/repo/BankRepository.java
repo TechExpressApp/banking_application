@@ -49,17 +49,44 @@ public class BankRepository {
         this.seedPassword = seedPassword;
     }
 
+    /** Reads older than this are served from memory; writes always re-read first. */
+    private static final long READ_TTL_MS = 3000;
+    private long lastRefresh;
+
     @PostConstruct
     void load() {
         synchronized (lock) {
-            store.readAll(CUSTOMERS).forEach(r -> put(customers, Customer.fromRow(r), Customer::customerId));
-            store.readAll(ACCOUNTS).forEach(r -> put(accounts, Account.fromRow(r), Account::accountNumber));
-            store.readAll(BENEFICIARIES).forEach(r -> put(beneficiaries, Beneficiary.fromRow(r), Beneficiary::beneficiaryId));
-            store.readAll(TRANSACTIONS).forEach(r -> transactions.add(Transaction.fromRow(r)));
+            readTables();
             if (accounts.isEmpty()) seed();
             log.info("Loaded {} customers, {} accounts, {} beneficiaries, {} transactions",
                     customers.size(), accounts.size(), beneficiaries.size(), transactions.size());
         }
+    }
+
+    private void readTables() {
+        List<List<String>> c = store.readAll(CUSTOMERS), a = store.readAll(ACCOUNTS),
+                b = store.readAll(BENEFICIARIES), t = store.readAll(TRANSACTIONS);
+        customers.clear(); accounts.clear(); beneficiaries.clear(); transactions.clear();
+        c.forEach(r -> put(customers, Customer.fromRow(r), Customer::customerId));
+        a.forEach(r -> put(accounts, Account.fromRow(r), Account::accountNumber));
+        b.forEach(r -> put(beneficiaries, Beneficiary.fromRow(r), Beneficiary::beneficiaryId));
+        t.forEach(r -> transactions.add(Transaction.fromRow(r)));
+        lastRefresh = System.currentTimeMillis();
+    }
+
+    /**
+     * Re-reads every table so this instance sees changes made by other server instances (e.g. on Vercel,
+     * where several instances share one Google Sheet). Call while holding {@link #lock}.
+     * @param beforeWrite true before any change: always re-read, so we never save over newer data
+     */
+    public void refresh(boolean beforeWrite) {
+        if (!beforeWrite && System.currentTimeMillis() - lastRefresh < READ_TTL_MS) return;
+        if (store.readAll(ACCOUNTS).isEmpty() && !accounts.isEmpty()) {
+            // Never replace good data with an empty read (e.g. the sheet was cleared by hand).
+            log.warn("Accounts table read back empty; keeping the data already in memory");
+            return;
+        }
+        readTables();
     }
 
     /** Creates the 10 sample customers/accounts the first time the app runs against an empty store. */

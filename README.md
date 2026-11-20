@@ -46,6 +46,10 @@ Transfers are atomic: if saving fails, the balances are rolled back.
 > The app loads the sheet into memory when it starts. If you edit the sheet by hand while the app is running, restart the app to pick up your edits.
 > Otherwise the app's next write overwrites them.
 
+## Deploy to Vercel
+
+See [docs/deploy-vercel.md](docs/deploy-vercel.md). The app runs as a Docker container on Vercel's Container runtime, with data in a Google Sheet.
+
 ## REST API
 
 | Method | Path | Auth |

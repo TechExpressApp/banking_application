@@ -44,6 +44,7 @@ public class BankService {
         if (deposit.signum() < 0) throw BankException.badRequest("Opening deposit cannot be negative");
 
         synchronized (repo.lock) {
+            repo.refresh(true);
             if (repo.findCustomerByEmail(email).isPresent()) {
                 throw BankException.conflict("A customer with this e-mail is already registered");
             }
@@ -67,6 +68,9 @@ public class BankService {
 
     public Customer authenticate(String email, String password) {
         synchronized (repo.lock) {
+            repo.refresh(false);
+            // Not found? Another server instance may have just registered them: re-read before refusing.
+            if (repo.findCustomerByEmail(email.trim()).isEmpty()) repo.refresh(true);
             return repo.findCustomerByEmail(email.trim())
                     .filter(c -> encoder.matches(password, c.passwordHash()))
                     .orElseThrow(() -> BankException.unauthorized("Invalid e-mail or password"));
@@ -75,12 +79,16 @@ public class BankService {
 
     public Customer customer(String customerId) {
         synchronized (repo.lock) {
+            repo.refresh(false);
+            if (repo.findCustomer(customerId).isEmpty()) repo.refresh(true);
             return repo.findCustomer(customerId).orElseThrow(() -> BankException.notFound("Customer not found"));
         }
     }
 
     public List<Account> accountsOf(String customerId) {
         synchronized (repo.lock) {
+            repo.refresh(false);
+            if (repo.accountsOf(customerId).isEmpty()) repo.refresh(true);
             return repo.accountsOf(customerId);
         }
     }
@@ -89,12 +97,14 @@ public class BankService {
 
     public List<Beneficiary> beneficiaries(String customerId) {
         synchronized (repo.lock) {
+            repo.refresh(false);
             return repo.beneficiariesOf(customerId);
         }
     }
 
     public Beneficiary addBeneficiary(String customerId, String accountNumber, String nickname) {
         synchronized (repo.lock) {
+            repo.refresh(true);
             Account target = repo.findAccount(accountNumber.trim())
                     .orElseThrow(() -> BankException.notFound("No account " + accountNumber + " exists in this bank"));
             if (target.customerId().equals(customerId)) {
@@ -120,6 +130,7 @@ public class BankService {
 
     public void removeBeneficiary(String customerId, String beneficiaryId) {
         synchronized (repo.lock) {
+            repo.refresh(true);
             Beneficiary b = repo.findBeneficiary(beneficiaryId)
                     .filter(x -> x.customerId().equals(customerId))
                     .orElseThrow(() -> BankException.notFound("Beneficiary not found"));
@@ -139,6 +150,7 @@ public class BankService {
     public Transaction transferToBeneficiary(String customerId, String fromAccount, String beneficiaryId,
                                              BigDecimal amount, String note) {
         synchronized (repo.lock) {
+            repo.refresh(false);
             Account from = repo.findAccount(fromAccount)
                     .orElseThrow(() -> BankException.notFound("Source account not found"));
             if (!from.customerId().equals(customerId)) {
@@ -160,6 +172,7 @@ public class BankService {
         if (fromAccount.equals(toAccount)) throw BankException.badRequest("Source and target accounts must be different");
 
         synchronized (repo.lock) {
+            repo.refresh(true);
             Account from = repo.findAccount(fromAccount).orElseThrow(() -> BankException.notFound("Source account " + fromAccount + " not found"));
             Account to = repo.findAccount(toAccount).orElseThrow(() -> BankException.notFound("Target account " + toAccount + " not found"));
             if (from.balance().compareTo(amount) < 0) {
@@ -194,18 +207,21 @@ public class BankService {
 
     public List<Account> allAccounts() {
         synchronized (repo.lock) {
+            repo.refresh(false);
             return List.copyOf(repo.allAccounts());
         }
     }
 
     public Account account(String accountNumber) {
         synchronized (repo.lock) {
+            repo.refresh(false);
             return repo.findAccount(accountNumber).orElseThrow(() -> BankException.notFound("Account " + accountNumber + " not found"));
         }
     }
 
     public Beneficiary beneficiary(String customerId, String beneficiaryId) {
         synchronized (repo.lock) {
+            repo.refresh(false);
             return repo.findBeneficiary(beneficiaryId).filter(b -> b.customerId().equals(customerId))
                     .orElseThrow(() -> BankException.notFound("Beneficiary " + beneficiaryId + " not found"));
         }
@@ -213,18 +229,21 @@ public class BankService {
 
     public List<Transaction> transactionsOfAccount(String accountNumber, int limit) {
         synchronized (repo.lock) {
+            repo.refresh(false);
             return repo.transactionsFor(Set.of(accountNumber), limit);
         }
     }
 
     public List<Transaction> recentTransactions(int limit) {
         synchronized (repo.lock) {
+            repo.refresh(false);
             return repo.recentTransactions(limit);
         }
     }
 
     public List<Transaction> transactionsOf(String customerId, int limit) {
         synchronized (repo.lock) {
+            repo.refresh(false);
             Set<String> mine = repo.accountsOf(customerId).stream().map(Account::accountNumber).collect(Collectors.toSet());
             return repo.transactionsFor(mine, limit);
         }

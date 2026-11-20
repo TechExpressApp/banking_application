@@ -20,24 +20,38 @@ public class FraudAlertStore {
         this.store = store;
     }
 
+    private long lastRefresh;
+
     @PostConstruct
     synchronized void load() {
-        store.readAll(TABLE).forEach(r -> alerts.add(FraudAlert.fromRow(r)));
+        refresh(true);
+    }
+
+    /** Re-reads alerts so this instance sees alerts raised by other server instances. */
+    private void refresh(boolean force) {
+        if (!force && System.currentTimeMillis() - lastRefresh < 3000) return;
+        List<FraudAlert> fresh = store.readAll(TABLE).stream().map(FraudAlert::fromRow).toList();
+        alerts.clear();
+        alerts.addAll(fresh);
+        lastRefresh = System.currentTimeMillis();
     }
 
     public synchronized void add(FraudAlert a) {
+        refresh(true);
         alerts.add(a);
         flush();
     }
 
     /** Newest first; status null = all. */
     public synchronized List<FraudAlert> list(String status, int limit) {
+        refresh(false);
         return alerts.reversed().stream()
                 .filter(a -> status == null || status.isBlank() || a.status().equalsIgnoreCase(status))
                 .limit(limit).toList();
     }
 
     public synchronized FraudAlert resolve(String alertId, String note) {
+        refresh(true);
         for (int i = 0; i < alerts.size(); i++) {
             if (alerts.get(i).alertId().equals(alertId)) {
                 FraudAlert r = alerts.get(i).resolve(note);

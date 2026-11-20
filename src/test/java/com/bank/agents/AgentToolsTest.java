@@ -35,7 +35,7 @@ class AgentToolsTest {
         pending = new PendingActionStore();
         assistant = new BankingAssistantAgent(bank).definition();
         operations = new OperationsAgent(bank, tb.alerts).definition();
-        fraud = new FraudMonitorAgent(null, new AgentProperties(), bank, tb.alerts);
+        fraud = new FraudMonitorAgent(null, new AgentProperties(), bank, tb.alerts, new UsageBudget(tb.jdbc, new java.math.BigDecimal("1.00"), "UTC"));
         aarav = new ToolContext("CUST:CUST001", "CUST001", "conv-1", pending);
     }
 

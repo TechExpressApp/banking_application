@@ -62,3 +62,10 @@ CREATE TABLE IF NOT EXISTS bank.fraud_alerts (
     status             VARCHAR(10)   NOT NULL,
     resolved_note      VARCHAR(500)  NOT NULL DEFAULT ''
 );
+
+-- Estimated Claude API spend per day, shared by all server instances (enforces the daily AI budget).
+CREATE TABLE IF NOT EXISTS bank.agent_usage (
+    usage_day VARCHAR(10)   PRIMARY KEY,
+    cost_usd  NUMERIC(12,6) NOT NULL DEFAULT 0,
+    calls     INTEGER       NOT NULL DEFAULT 0
+);

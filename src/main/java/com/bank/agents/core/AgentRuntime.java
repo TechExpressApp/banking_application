@@ -29,11 +29,14 @@ public class AgentRuntime {
     private final ObjectProvider<AnthropicClient> client;
     private final AgentProperties props;
     private final PendingActionStore pendingActions;
+    private final UsageBudget budget;
 
-    public AgentRuntime(ObjectProvider<AnthropicClient> client, AgentProperties props, PendingActionStore pendingActions) {
+    public AgentRuntime(ObjectProvider<AnthropicClient> client, AgentProperties props, PendingActionStore pendingActions,
+                        UsageBudget budget) {
         this.client = client;
         this.props = props;
         this.pendingActions = pendingActions;
+        this.budget = budget;
     }
 
     public AgentReply chat(AgentDefinition agent, Conversation conv, String userText, ToolContext ctx) {
@@ -105,8 +108,11 @@ public class AgentRuntime {
             b.putAdditionalHeader("anthropic-beta", FALLBACK_BETA);
             b.putAdditionalBodyProperty("fallbacks", JsonValue.from("default"));
         }
+        budget.requireBudget();                     // refuse once today's AI budget is used up
         try {
-            return client.getObject().messages().create(b.build());
+            Message m = client.getObject().messages().create(b.build());
+            budget.record(m.model().asString(), m.usage());
+            return m;
         } catch (RateLimitException e) {
             throw new BankException(HttpStatus.TOO_MANY_REQUESTS, "The assistant is busy right now. Please try again in a moment.");
         } catch (AnthropicServiceException e) {

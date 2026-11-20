@@ -42,10 +42,11 @@ public class AgentController {
     private final SessionService sessions;
     private final FraudAlertStore fraudAlerts;
     private final AgentProperties props;
+    private final UsageBudget budget;
     private final Map<String, AgentDefinition> agents;
 
     public AgentController(AgentRuntime runtime, ConversationStore conversations, PendingActionStore pendingActions,
-                           SessionService sessions, FraudAlertStore fraudAlerts, AgentProperties props,
+                           SessionService sessions, FraudAlertStore fraudAlerts, AgentProperties props, UsageBudget budget,
                            BankingAssistantAgent assistant, SupportAgent support, OperationsAgent operations) {
         this.runtime = runtime;
         this.conversations = conversations;
@@ -53,6 +54,7 @@ public class AgentController {
         this.sessions = sessions;
         this.fraudAlerts = fraudAlerts;
         this.props = props;
+        this.budget = budget;
         this.agents = Map.of(
                 BankingAssistantAgent.NAME, assistant.definition(),
                 SupportAgent.NAME, support.definition(),
@@ -63,7 +65,7 @@ public class AgentController {
     public Map<String, Object> status() {
         return Map.of("enabled", props.isEnabled(), "model", props.getModel(),
                 "agents", List.of("assistant", "support", "operations", "fraud"),
-                "fraudMonitor", props.getFraud().isEnabled());
+                "fraudMonitor", props.getFraud().isEnabled(), "budget", budget.status());
     }
 
     @PostMapping("/{agent}/chat")

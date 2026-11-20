@@ -5,6 +5,7 @@ import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.*;
 import com.bank.agents.core.AgentProperties;
 import com.bank.agents.core.PromptLoader;
+import com.bank.agents.core.UsageBudget;
 import com.bank.model.Account;
 import com.bank.model.Transaction;
 import com.bank.service.BankService;
@@ -38,13 +39,16 @@ public class FraudMonitorAgent {
     private final AgentProperties props;
     private final BankService bank;
     private final FraudAlertStore alerts;
+    private final UsageBudget budget;
     private final String systemPrompt = PromptLoader.load("fraud/system-prompt.md");
 
-    public FraudMonitorAgent(ObjectProvider<AnthropicClient> client, AgentProperties props, BankService bank, FraudAlertStore alerts) {
+    public FraudMonitorAgent(ObjectProvider<AnthropicClient> client, AgentProperties props, BankService bank,
+                             FraudAlertStore alerts, UsageBudget budget) {
         this.client = client;
         this.props = props;
         this.bank = bank;
         this.alerts = alerts;
+        this.budget = budget;
     }
 
     @Async
@@ -85,6 +89,10 @@ public class FraudMonitorAgent {
         List<Transaction> history = bank.transactionsOfAccount(t.fromAccount(), 25);
         List<String> triggers = triggers(t, sender, history);
         if (triggers.isEmpty()) return Optional.empty();
+        if (!budget.hasBudget()) {
+            log.warn("Fraud review of {} skipped: today's AI budget is used up (triggers: {})", t.transactionId(), triggers);
+            return Optional.empty();
+        }
 
         Map<String, Object> caseFile = new LinkedHashMap<>();
         caseFile.put("transaction", t);
@@ -109,6 +117,7 @@ public class FraudMonitorAgent {
         }
 
         StructuredMessage<FraudAssessment> msg = client.getObject().messages().create(b.build());
+        budget.record(msg.model().asString(), msg.usage());
         if (msg.stopReason().map(StopReason.REFUSAL::equals).orElse(false)) {
             log.warn("Fraud review of {} was declined by the model", t.transactionId());
             return Optional.empty();
